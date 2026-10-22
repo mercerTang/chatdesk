@@ -8,7 +8,7 @@
 
 请**不要**在公开 Issue 里贴漏洞细节。通过以下任一方式私下联系维护者：
 
-- 邮件：`security@example.com`（占位，正式开源后请替换为真实邮箱）
+- 邮件：`mercerTang@users.noreply.github.com`
 - 或使用 GitHub 的「Report a vulnerability」（Security 标签页）
 
 请附：影响版本、复现步骤、影响面（能否未授权访问 / 能否执行代码 / 能否读写他人数据）、你的修复建议（如果有）。我们会在确认后回复处理计划。

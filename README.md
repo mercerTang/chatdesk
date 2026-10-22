@@ -246,3 +246,7 @@ cd web && npm run build
 - 需求与设计文档：[`docs/README.md`](docs/README.md)
 
 欢迎提 Issue 与 PR。反馈 bug 时请附环境、复现步骤与日志；提 PR 前请先跑一遍 `dotnet test` 与 `npm run build`。
+
+## 作者
+
+mercer（GitHub: [@mercerTang](https://github.com/mercerTang)）· 全栈开发工程师
