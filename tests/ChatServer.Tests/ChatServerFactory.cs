@@ -1,4 +1,7 @@
+using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using ChatServer.Dtos;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
@@ -10,10 +13,14 @@ public class ChatServerFactory : WebApplicationFactory<Program>
     private readonly string _databasePath =
         Path.Combine(Path.GetTempPath(), $"chatserver-tests-{Guid.NewGuid():N}.db");
 
+    private readonly string _uploadsPath =
+        Path.Combine(Path.GetTempPath(), $"chatserver-uploads-{Guid.NewGuid():N}");
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={_databasePath}");
         builder.UseSetting("Serilog:FileLogging", "false");
+        builder.UseSetting("Files:UploadRoot", _uploadsPath);
         builder.UseEnvironment("Development");
     }
 
@@ -47,6 +54,18 @@ public class ChatServerFactory : WebApplicationFactory<Program>
             {
                 // 临时文件清理失败不影响测试结论
             }
+        }
+
+        try
+        {
+            if (Directory.Exists(_uploadsPath))
+            {
+                Directory.Delete(_uploadsPath, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // 同上
         }
     }
 }

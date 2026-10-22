@@ -10,7 +10,9 @@ import ThemeSwitch from '../components/ThemeSwitch.vue'
 import { api } from '../lib/api'
 import { auth, clearSession, updateUser } from '../lib/auth'
 import { createChatStore } from '../lib/chatStore'
+import { notifyDesktop } from '../lib/desktop'
 import { formatTime, initialOf } from '../lib/format'
+import { toPlainText } from '../lib/richText'
 import { flashTitle } from '../lib/notify'
 
 const router = useRouter()
@@ -22,6 +24,20 @@ const myLimit = ref(5)
 const loadingList = ref(false)
 
 const CURRENT_KEY = 'chat.agentConversationId'
+
+/** 新消息提醒：桌面端走系统通知（点通知聚焦窗口），浏览器退回应用内通知。 */
+function notifyNewMessage(title, message) {
+  if (notifyDesktop({ title, body: message })) {
+    return
+  }
+  ElNotification({
+    title,
+    message,
+    position: 'bottom-right',
+    duration: 6000,
+    customClass: 'chat-notice'
+  })
+}
 
 const store = createChatStore({
   selfId: me.id,
@@ -42,13 +58,7 @@ const store = createChatStore({
         flashTitle('新消息')
         const preview =
           message.content.length > 40 ? `${message.content.slice(0, 40)}…` : message.content
-        ElNotification({
-          title: conversation.visitorName || '新消息',
-          message: preview,
-          position: 'bottom-right',
-          duration: 6000,
-          customClass: 'chat-notice'
-        })
+        notifyNewMessage(conversation.visitorName || '新消息', preview)
       }
 
       // 左侧列表按最后消息时间倒序，最新会话浮到最上面
@@ -78,7 +88,42 @@ const store = createChatStore({
       }
       store.setStatus(payload.conversationId, 'closed')
     },
+    onConversationTransferred: (payload) => {
+      // 自己名下的会话被转出：从列表移除，正在查看的会话退回空态
+      const index = conversations.value.findIndex((entry) => entry.id === payload.conversationId)
+      if (index >= 0) {
+        conversations.value.splice(index, 1)
+      }
+      if (current.value?.id === payload.conversationId) {
+        current.value = null
+      }
+      store.forget(payload.conversationId)
+      ElMessage.info(`会话已转派给 ${payload.agentName}`)
+      notifyDesktop({ title: '会话已转派', body: `已转派给 ${payload.agentName}` })
+    },
+    onConversationAssigned: (conversation) => {
+      // 转派转入：按访客 upsert（同一访客只保留一行）并接管实时接收
+      const existing = conversations.value.findIndex(
+        (entry) => entry.visitorId === conversation.visitorId
+      )
+      if (existing >= 0) {
+        conversations.value.splice(existing, 1, conversation)
+      } else {
+        conversations.value = [conversation, ...conversations.value]
+      }
+      conversations.value = sortByActivity(conversations.value)
+      ElMessage.success(`新转入会话：${conversation.visitorName}`)
+      notifyDesktop({ title: '新转入会话', body: conversation.visitorName })
+      store.track(conversation)
+    },
     onRestored: () => refreshConversations(),
+    onSessionRevoked: () => {
+      // 账号被管理员停用：服务端不断连，只通知前端登出（进行中的会话不被打断）
+      clearSession()
+      ElMessage.error('账号已被停用，已退回登录页，请联系管理员')
+      notifyDesktop({ title: '账号已被停用', body: '已退回登录页，请联系管理员' })
+      router.replace('/login')
+    },
     onError: (error) => ElMessage.warning(error.message)
   }
 })
@@ -265,7 +310,7 @@ onBeforeUnmount(() => store.dispose())
                   已关闭
                 </el-tag>
               </div>
-              <div class="item-sub">{{ conversation.lastMessage || '暂无消息' }}</div>
+              <div class="item-sub">{{ toPlainText(conversation.lastMessage) || '暂无消息' }}</div>
             </div>
             <div class="item-side">
               <span>{{ formatTime(conversation.lastMessageAt) }}</span>

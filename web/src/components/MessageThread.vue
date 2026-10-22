@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import EmptyState from './EmptyState.vue'
+import RichText from './RichText.vue'
 import { formatTime } from '../lib/format'
 
 const props = defineProps({
@@ -64,7 +65,7 @@ watch(() => props.items.length, scrollToBottom)
       class="msg"
       :class="item.self ? 'is-self' : 'is-peer'"
     >
-      <div class="bubble">{{ item.content }}</div>
+      <div class="bubble"><RichText :content="item.content" /></div>
       <div class="meta">
         <span>{{ formatTime(item.time) }}</span>
         <span

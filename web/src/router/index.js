@@ -31,6 +31,33 @@ const routes = [
     meta: { role: 'agent' }
   },
   {
+    path: '/admin',
+    component: () => import('../views/admin/AdminLayout.vue'),
+    meta: { role: 'admin' },
+    children: [
+      {
+        path: '',
+        name: 'admin-dashboard',
+        component: () => import('../views/admin/AdminDashboard.vue')
+      },
+      {
+        path: 'agents',
+        name: 'admin-agents',
+        component: () => import('../views/admin/AdminAgents.vue')
+      },
+      {
+        path: 'conversations',
+        name: 'admin-conversations',
+        component: () => import('../views/admin/AdminConversations.vue')
+      },
+      {
+        path: 'tickets',
+        name: 'admin-tickets',
+        component: () => import('../views/admin/AdminTickets.vue')
+      }
+    ]
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
@@ -41,7 +68,7 @@ const router = createRouter({
   routes
 })
 
-// 角色守卫：未登录 → /login；访客只进 /chat，客服只进 /agent
+// 角色守卫：未登录 → /login；访客只进 /chat，客服只进 /agent，管理员只进 /admin
 router.beforeEach((to) => {
   const loggedIn = Boolean(auth.token && auth.user)
 

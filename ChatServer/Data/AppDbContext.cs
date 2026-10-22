@@ -13,6 +13,8 @@ public class AppDbContext : DbContext
     public DbSet<Conversation> Conversations { get; set; }
     public DbSet<Message> Messages { get; set; }
     public DbSet<Ticket> Tickets { get; set; }
+    public DbSet<TicketTransfer> TicketTransfers { get; set; }
+    public DbSet<FileAsset> FileAssets { get; set; }
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
@@ -103,6 +105,48 @@ public class AppDbContext : DbContext
             entity.HasIndex(t => t.TicketNo).IsUnique();
             entity.HasIndex(t => t.ConversationId).IsUnique();
             entity.HasIndex(t => t.CreatedAt);
+        });
+
+        modelBuilder.Entity<TicketTransfer>(entity =>
+        {
+            entity.HasOne(t => t.Ticket)
+                .WithMany()
+                .HasForeignKey(t => t.TicketId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(t => t.FromAgent)
+                .WithMany()
+                .HasForeignKey(t => t.FromAgentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(t => t.ToAgent)
+                .WithMany()
+                .HasForeignKey(t => t.ToAgentId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(t => t.Operator)
+                .WithMany()
+                .HasForeignKey(t => t.OperatorId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.Property(t => t.Note).HasMaxLength(200);
+
+            entity.HasIndex(t => new { t.TicketId, t.CreatedAt });
+        });
+
+        modelBuilder.Entity<FileAsset>(entity =>
+        {
+            entity.Property(f => f.StoredName).HasMaxLength(200).IsRequired();
+            entity.Property(f => f.OriginalName).HasMaxLength(200).IsRequired();
+            entity.Property(f => f.ContentType).HasMaxLength(120).IsRequired();
+
+            entity.HasOne(f => f.Uploader)
+                .WithMany()
+                .HasForeignKey(f => f.UploaderId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(f => f.StoredName).IsUnique();
+            entity.HasIndex(f => f.CreatedAt);
         });
     }
 }

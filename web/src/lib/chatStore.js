@@ -348,6 +348,10 @@ export function createChatStore({ selfId, hooks = {} }) {
       }
       hooks.onConversationClosed?.(payload)
     })
+    conn.on('ConversationTransferred', (payload) => hooks.onConversationTransferred?.(payload))
+    conn.on('ConversationAssigned', (conversation) => hooks.onConversationAssigned?.(conversation))
+    // 账号被管理员停用：由页面自行清会话并回登录页（服务端不断连，避免打断进行中的会话）
+    conn.on('SessionRevoked', () => hooks.onSessionRevoked?.())
 
     conn.onreconnecting(() => {
       state.connection = 'reconnecting'
@@ -529,6 +533,14 @@ export function createChatStore({ selfId, hooks = {} }) {
     }
   }
 
+  /** 放弃内存中的会话缓存（工单被转出后调用，避免重连时对无权会话再次入组）。 */
+  function forget(conversationId) {
+    channels.delete(conversationId)
+    if (visibleId === conversationId) {
+      visibleId = null
+    }
+  }
+
   return {
     state,
     items,
@@ -539,6 +551,7 @@ export function createChatStore({ selfId, hooks = {} }) {
     send,
     retry,
     setStatus,
+    forget,
     isConnected
   }
 }

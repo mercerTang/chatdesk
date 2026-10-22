@@ -20,8 +20,11 @@ export const auth = reactive({
 
 export const isLoggedIn = computed(() => Boolean(auth.token && auth.user))
 
-/** 按角色给落地页：访客 → /chat，客服 → /agent。 */
+/** 按角色给落地页：访客 → /chat，客服 → /agent，管理员 → /admin。 */
 export function homePath(user = auth.user) {
+  if (user?.role === 'admin') {
+    return '/admin'
+  }
   return user?.role === 'agent' ? '/agent' : '/chat'
 }
 

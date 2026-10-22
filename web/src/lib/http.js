@@ -1,9 +1,11 @@
 import axios from 'axios'
 import router from '../router'
 import { auth, clearSession } from './auth'
+import { resolveApiBase } from './desktop'
 
-// 缺省用相对路径：开发期走 Vite 代理，生产期由反向代理把 /api、/hubs 转到后端
-const baseURL = import.meta.env.VITE_API_BASE_URL || ''
+// 基址顺序：URL 参数 apiBase → localStorage → 构建期 VITE_API_BASE_URL → 同源
+// 桌面端由此拿到主进程配置的后端地址；浏览器缺省仍是相对路径（开发期 Vite 代理，生产期反向代理）
+const baseURL = resolveApiBase()
 
 export const http = axios.create({ baseURL, timeout: 20000 })
 

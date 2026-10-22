@@ -1,3 +1,6 @@
+using System.Linq.Expressions;
+using ChatServer.Models;
+
 namespace ChatServer.Dtos;
 
 /// <summary>客服列表项：在线状态与当前负载。</summary>
@@ -51,3 +54,20 @@ public record SendMessageAck(
 
 /// <summary>重新加入会话时返回的会话水位。</summary>
 public record ConversationJoinResult(int ConversationId, string Status, long LastMessageSeq);
+
+/// <summary>消息列表/详情的共享投影：控制器与服务共用同一份字段来源。</summary>
+public static class MessageProjections
+{
+    public static readonly Expression<Func<Message, MessageDto>> Projection = message => new MessageDto(
+        message.Id,
+        message.ConversationId,
+        message.Seq,
+        message.SenderId,
+        message.Sender != null ? message.Sender.DisplayName : string.Empty,
+        message.SenderRole,
+        message.Content,
+        message.ClientMessageId,
+        message.SentAt,
+        message.DeliveredAt,
+        message.ReadAt);
+}

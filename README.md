@@ -8,7 +8,7 @@
 ## 目录结构
 
 ```
-newproject/
+chatdesk-copy/
 ├── ChatServer.sln
 ├── ChatServer/                 # 后端（仅 API 与 Hub，不再托管页面）
 │   ├── Program.cs              # 启动：Serilog / EF / JWT / SignalR / 全局异常 / 建库种子
@@ -26,6 +26,7 @@ newproject/
 │       ├── lib/                # http（token 拦截器）、api、auth、signalr、chatStore
 │       └── router/             # 角色路由守卫
 ├── tests/ChatServer.Tests/     # xUnit + WebApplicationFactory + SignalR Client
+├── desktop/                    # Electron 客服桌面客户端（托盘、系统通知、后端地址可配）
 └── README.md
 ```
 
@@ -35,20 +36,20 @@ newproject/
 
 ```bash
 # 1) 后端（终端 A）
-cd ~/Desktop/开发/newproject
+cd ~/Desktop/开发/chatdesk-copy
 dotnet build                                  # 0 error
-dotnet test                                   # 31 个用例全绿
+dotnet test                                   # 57 个用例全绿
 dotnet run --project ChatServer --urls http://localhost:5180
 
 # 2) 前端（终端 B）
-cd ~/Desktop/开发/newproject/web
+cd ~/Desktop/开发/chatdesk-copy/web
 npm install
 npm run dev                                   # http://localhost:5173
 
 ### 一键启动（macOS）
 
 ```bash
-cd ~/Desktop/开发/newproject
+cd ~/Desktop/开发/chatdesk-copy
 ./start.command          # 启动后端 5180 + 访客前端 5173 + 客服前端 5174，并自动打开两个登录页
 ./start.command stop     # 停止由它启动的进程（前台运行时也可直接 Ctrl+C）
 ```
@@ -62,7 +63,10 @@ cd ~/Desktop/开发/newproject
 | 登录页 | http://localhost:5173/login | 访客登录/注册、客服登录 |
 | 访客聊天 | http://localhost:5173/chat | 自动匹配在线客服 + 会话与回执 |
 | 客服工作台 | http://localhost:5173/agent | 1 对多会话列表 + 切换回复 |
-| 工单记录 | http://localhost:5173/tickets | 客服查看工单聊天记录，导出 TXT / CSV |
+| 工单记录 | http://localhost:5173/tickets | 客服查看工单聊天记录，转派给其他客服，导出 TXT / CSV |
+| 管理后台 | http://localhost:5174/admin | 管理员：仪表盘、客服管理、会话与工单总览、强制转派 |
+| 富文本 | 聊天输入框工具栏 | 所见即所得编辑器：粗体/斜体/删除线/行内代码/代码块/引用/列表/链接/表情，按 Markdown 存储并净化渲染 |
+| 图片与附件 | 输入框工具栏 | 粘贴/选择图片（≤10 MB，内联显示）、上传附件（≤10 MB，链接下载） |
 | 健康检查 | http://localhost:5180/health | 返回 `{"status":"OK"}` |
 | Swagger | http://localhost:5180/swagger | 仅开发环境 |
 
@@ -142,6 +146,9 @@ server {
 | GET | `/api/tickets` | 客服 | 工单列表（按创建时间倒序） |
 | GET | `/api/tickets/{id}` | 客服 | 工单详情与聊天记录 |
 | GET | `/api/tickets/{id}/export?format=txt\|csv` | 客服 | 导出工单记录 |
+| POST | `/api/files` | 任意登录用户 | 上传图片或附件（multipart，≤10 MB），返回 `/api/files/{id}` |
+| GET | `/api/files/{id}` | 匿名 | 读取上传文件；图片内联，其它按附件下载 |
+| POST | `/api/tickets/{id}/transfer` | 客服 | 把进行中的工单转派给另一名客服（`{ agentId, note? }`），仅当前服务客服 |
 | GET | `/health` | 匿名 | 健康检查 |
 
 状态码：未登录 401；角色不符 / 非会话参与方 403；客服并发已满 409；会话不存在 404；未处理异常统一返回 `{ "error": "..." }`。
@@ -168,6 +175,8 @@ server {
 | `MessageRead({conversationId, upToSeq, byAccountId, confirmedAt})` | 对端已读；只发给确认方之外的连接 |
 | `ConversationCreated(conversation)` | 新会话（推给对应客服） |
 | `ConversationClosed({conversationId, closedAt})` | 会话被关闭 |
+| `ConversationTransferred({conversationId, ticketId, agentId, agentName, transferredAt})` | 工单被转派：推给会话组与原客服组 |
+| `ConversationAssigned(conversation)` | 转派后的会话归属目标客服，推给目标客服组 |
 | `AgentPresenceChanged({agentId, isOnline, activeConversationCount})` | 客服上下线 |
 
 `byAccountId` 是确认方账号 ID。客户端必须先按它过滤（`byAccountId === 自己` 直接忽略），否则会把自己的消息标成已送达/已读。
@@ -186,11 +195,11 @@ server {
 ## 测试
 
 ```bash
-dotnet test          # 31 个用例
+dotnet test          # 57 个用例
 cd web && npm run build
 ```
 
-31 个用例（xUnit + `WebApplicationFactory` + SignalR Client），覆盖：
+57 个用例（xUnit + `WebApplicationFactory` + SignalR Client），覆盖：
 
 - 注册/登录/角色鉴权：注册后登录、重复用户名 409、错误密码 401、无令牌 401、客服调用访客接口 403、展示名超 64 字符或含控制字符 400
 - `/hubs/chat/negotiate` 无令牌 401、带令牌 200
@@ -198,9 +207,13 @@ cd web && npm run build
 - 可靠性：20 路并发发送得到严格递增且无缺口的 Seq、重发同 `ClientMessageId` 返回同一消息且只落一行、`afterSeq` 增量返回、关闭会话拒绝新消息、内容去空白与空内容拒绝
 - 实时通道：`SendMessage` 回执含 Seq 且广播到对端、重复 `ClientMessageId` 不重复广播、`AckDelivered`/`AckRead` 落库并通知发送方、回执携带 `byAccountId` 且确认方自己收不到自己的回执
 - 工单：随会话创建、关闭同步状态、详情按时间正序、TXT/CSV 导出、仅服务客服可见
+- 工单转派：归属迁移与台账、非本人/访客/转自己/已结束/满员拒绝、双端事件、原客服不再收到该会话消息
+- 管理中台：角色鉴权 401/403、客服增改停用与密码重置、跨客服读会话与工单、强制转派台账含操作人、停用推送 SessionRevoked
+- 数据统计：按日计数含 0 值日、首响均值与样本数、按客服维度、days 越界 400
+- 图片与附件：上传需鉴权、类型白名单、超 10 MB 拒绝、图片文件头校验、下载还原原文件名
 - 数据保留：超过 30 天的消息被清理，工单与会话保留
 - 极端网络：客服离线期间的消息落库并在恢复后补拉、客服断线重连后按水位补齐
 
 ## 边界（本轮不做）
 
-多实例集群 / Redis 背板、密码找回与刷新令牌、邮箱验证、多设备会话管理、消息撤回编辑、图片与文件消息、排队转接、账号管理后台。
+多实例集群 / Redis 背板、密码找回与刷新令牌、邮箱验证、多设备会话管理、消息撤回编辑、图片与文件消息、排队、账号管理后台。

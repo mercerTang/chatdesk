@@ -15,9 +15,11 @@ const submitting = ref(false)
 
 const visitorFormRef = ref(null)
 const agentFormRef = ref(null)
+const adminFormRef = ref(null)
 
 const visitorForm = reactive({ username: '', password: '', displayName: '' })
 const agentForm = reactive({ username: '', password: '' })
+const adminForm = reactive({ username: '', password: '' })
 
 const usernameRules = [
   { required: true, message: '请输入用户名', trigger: 'blur' },
@@ -37,6 +39,11 @@ const visitorRules = {
 }
 
 const agentRules = {
+  username: usernameRules,
+  password: passwordRules
+}
+
+const adminRules = {
   username: usernameRules,
   password: passwordRules
 }
@@ -102,6 +109,33 @@ async function submitAgent() {
     setSession(result)
     ElMessage.success(`欢迎，${result.user.displayName}`)
     router.replace('/agent')
+  } catch (error) {
+    ElMessage.error(error.message)
+  } finally {
+    submitting.value = false
+  }
+}
+
+async function submitAdmin() {
+  const form = adminFormRef.value
+  if (!form) {
+    return
+  }
+  const valid = await form.validate().catch(() => false)
+  if (!valid) {
+    return
+  }
+
+  submitting.value = true
+  try {
+    const result = await api.login({ username: adminForm.username, password: adminForm.password })
+    if (result.user.role !== 'admin') {
+      ElMessage.error('该账号不是管理员账号')
+      return
+    }
+    setSession(result)
+    ElMessage.success(`欢迎，${result.user.displayName}`)
+    router.replace(homePath(result.user))
   } catch (error) {
     ElMessage.error(error.message)
   } finally {
@@ -203,9 +237,40 @@ async function submitAgent() {
               </el-button>
             </el-form>
           </el-tab-pane>
+
+          <el-tab-pane label="管理员" name="admin">
+            <el-form
+              ref="adminFormRef"
+              :model="adminForm"
+              :rules="adminRules"
+              label-position="top"
+              @submit.prevent="submitAdmin"
+            >
+              <el-form-item label="管理员账号" prop="username">
+                <el-input v-model.trim="adminForm.username" placeholder="admin" />
+              </el-form-item>
+
+              <el-form-item label="密码" prop="password">
+                <el-input
+                  v-model="adminForm.password"
+                  type="password"
+                  show-password
+                  placeholder="管理员密码"
+                  @keyup.enter="submitAdmin"
+                />
+              </el-form-item>
+
+              <el-button type="primary" class="submit" :loading="submitting" @click="submitAdmin">
+                进入管理后台
+              </el-button>
+            </el-form>
+          </el-tab-pane>
         </el-tabs>
 
-        <p class="tip">演示客服账号：agent1、agent2、agent3，密码 Agent@123456</p>
+        <p class="tip">
+          演示客服账号：agent1、agent2、agent3（密码 Agent@123456）；管理员：admin（密码
+          Admin@123456）
+        </p>
       </div>
     </section>
   </div>

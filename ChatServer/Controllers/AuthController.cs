@@ -119,6 +119,13 @@ public class AuthController : ControllerBase
             return Unauthorized(new { error = "用户名或密码错误" });
         }
 
+        // 停用账号：密码对也不发令牌（启用后自动恢复）
+        if (!account.IsActive)
+        {
+            _logger.LogWarning("登录被拒绝（账号已停用）：{Username}", username);
+            return StatusCode(StatusCodes.Status403Forbidden, new { error = "账号已停用" });
+        }
+
         _logger.LogInformation("登录成功：{Username}（{Role}）", account.Username, account.Role);
         return Ok(BuildAuthResponse(account));
     }

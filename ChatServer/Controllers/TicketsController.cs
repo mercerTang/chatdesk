@@ -1,4 +1,3 @@
-using System.Linq.Expressions;
 using System.Text;
 using ChatServer.Data;
 using ChatServer.Dtos;
@@ -16,47 +15,22 @@ namespace ChatServer.Controllers;
 [Authorize(Roles = Roles.Agent)]
 public class TicketsController : ControllerBase
 {
-    private static Expression<Func<Ticket, TicketDto>> BuildTicketProjection(DateTimeOffset cutoff)
-        => ticket => new TicketDto(
-            ticket.Id,
-            ticket.TicketNo,
-            ticket.ConversationId,
-            ticket.Status,
-            ticket.Conversation!.Visitor != null ? ticket.Conversation.Visitor.DisplayName : string.Empty,
-            ticket.Conversation!.Agent != null ? ticket.Conversation.Agent.DisplayName : string.Empty,
-            ticket.Conversation.Messages.Count(message => message.SentAt >= cutoff),
-            ticket.Conversation.Messages
-                .Where(message => message.SentAt >= cutoff)
-                .OrderByDescending(message => message.Seq)
-                .Select(message => message.Content)
-                .FirstOrDefault(),
-            ticket.CreatedAt,
-            ticket.ClosedAt,
-            ticket.Conversation.LastActivityAt);
-
-    private static readonly Expression<Func<Message, MessageDto>> MessageProjection = message => new MessageDto(
-        message.Id,
-        message.ConversationId,
-        message.Seq,
-        message.SenderId,
-        message.Sender != null ? message.Sender.DisplayName : string.Empty,
-        message.SenderRole,
-        message.Content,
-        message.ClientMessageId,
-        message.SentAt,
-        message.DeliveredAt,
-        message.ReadAt);
-
     private readonly AppDbContext _db;
+    private readonly ChatService _chat;
+    private readonly ConversationRealtimeService _realtime;
     private readonly IConfiguration _configuration;
     private readonly ILogger<TicketsController> _logger;
 
     public TicketsController(
         AppDbContext db,
+        ChatService chat,
+        ConversationRealtimeService realtime,
         IConfiguration configuration,
         ILogger<TicketsController> logger)
     {
         _db = db;
+        _chat = chat;
+        _realtime = realtime;
         _configuration = configuration;
         _logger = logger;
     }
@@ -82,7 +56,7 @@ public class TicketsController : ControllerBase
         var tickets = await _db.Tickets.AsNoTracking()
             .Where(ticket => ticket.Conversation!.AgentId == accountId)
             .OrderByDescending(ticket => ticket.CreatedAt)
-            .Select(BuildTicketProjection(cutoff))
+            .Select(TicketProjections.Build(cutoff))
             .ToListAsync(ct);
 
         return Ok(tickets);
@@ -100,7 +74,7 @@ public class TicketsController : ControllerBase
         var cutoff = RetentionCutoff();
         var ticket = await _db.Tickets.AsNoTracking()
             .Where(item => item.Id == id && item.Conversation!.AgentId == accountId)
-            .Select(BuildTicketProjection(cutoff))
+            .Select(TicketProjections.Build(cutoff))
             .FirstOrDefaultAsync(ct);
         if (ticket is null)
         {
@@ -110,10 +84,53 @@ public class TicketsController : ControllerBase
         var messages = await _db.Messages.AsNoTracking()
             .Where(message => message.ConversationId == ticket.ConversationId && message.SentAt >= cutoff)
             .OrderBy(message => message.Seq)
-            .Select(MessageProjection)
+            .Select(MessageProjections.Projection)
             .ToListAsync(ct);
 
-        return Ok(new TicketDetailDto(ticket, messages));
+        var transfers = await _db.TicketTransfers.AsNoTracking()
+            .Where(transfer => transfer.TicketId == id)
+            .OrderBy(transfer => transfer.CreatedAt)
+            .ThenBy(transfer => transfer.Id)
+            .Select(TicketTransferProjections.Projection)
+            .ToListAsync(ct);
+
+        return Ok(new TicketDetailDto(ticket, messages, transfers));
+    }
+
+    /// <summary>把当前客服名下进行中的工单转派给另一名客服，并完成实时组员迁移。</summary>
+    [HttpPost("{id:int}/transfer")]
+    public async Task<ActionResult<TicketDto>> Transfer(
+        int id,
+        [FromBody] TransferTicketRequest? request,
+        CancellationToken ct)
+    {
+        var accountId = User.GetAccountId();
+        if (accountId == 0)
+        {
+            return Unauthorized(new { error = "登录状态无效" });
+        }
+
+        if (request is null)
+        {
+            return BadRequest(new { error = "请求无效" });
+        }
+
+        try
+        {
+            var result = await _chat.TransferTicketAsync(id, accountId, request.AgentId, request.Note, ct);
+
+            // 转派已提交：实时通知尽力而为，失败只记日志，不把已生效的转派报成 500
+            await _realtime.NotifyTransferredAsync(result);
+
+            _logger.LogInformation(
+                "工单 {TicketNo} 已转派给客服 {AgentId}",
+                result.Ticket.TicketNo, result.Conversation.AgentId);
+            return Ok(result.Ticket);
+        }
+        catch (ChatException ex)
+        {
+            return Error(ex);
+        }
     }
 
     [HttpGet("{id:int}/export")]
@@ -148,7 +165,7 @@ public class TicketsController : ControllerBase
         var messages = await _db.Messages.AsNoTracking()
             .Where(message => message.ConversationId == ticket.ConversationId && message.SentAt >= cutoff)
             .OrderBy(message => message.Seq)
-            .Select(MessageProjection)
+            .Select(MessageProjections.Projection)
             .ToListAsync(ct);
 
         var normalized = (format ?? "txt").Trim().ToLowerInvariant();
@@ -221,4 +238,13 @@ public class TicketsController : ControllerBase
         string VisitorName,
         string AgentName,
         int ConversationId);
+
+    private ActionResult Error(ChatException ex) => ex.Error switch
+    {
+        ChatError.BadRequest => BadRequest(new { error = ex.Message }),
+        ChatError.Forbidden => StatusCode(StatusCodes.Status403Forbidden, new { error = ex.Message }),
+        ChatError.NotFound => NotFound(new { error = ex.Message }),
+        ChatError.Conflict => Conflict(new { error = ex.Message }),
+        _ => StatusCode(StatusCodes.Status500InternalServerError, new { error = ex.Message })
+    };
 }

@@ -5,6 +5,7 @@ public static class Roles
 {
     public const string Visitor = "visitor";
     public const string Agent = "agent";
+    public const string Admin = "admin";
 }
 
 /// <summary>会话状态常量。</summary>

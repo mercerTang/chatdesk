@@ -38,9 +38,17 @@ public class ChatHub : Hub
     public override async Task OnConnectedAsync()
     {
         var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Id == CurrentAccountId, Context.ConnectionAborted);
+        if (account is { Role: Roles.Agent, IsActive: false })
+        {
+            // 停用账号不允许重连：未过期的 JWT 也不能建实时连接
+            _logger.LogWarning("停用客服 {Username} 尝试建立实时连接，已拒绝", account.Username);
+            Context.Abort();
+            return;
+        }
+
         if (account is { Role: Roles.Agent })
         {
-            _presence.Connect(account.Id);
+            _presence.Connect(account.Id, Context.ConnectionId);
             await Groups.AddToGroupAsync(Context.ConnectionId, ChatGroups.Agent(account.Id));
 
             // 客服连上即加入自己所有进行中的会话，避免新消息漏收
@@ -70,7 +78,7 @@ public class ChatHub : Hub
         var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Id == CurrentAccountId, CancellationToken.None);
         if (account is { Role: Roles.Agent })
         {
-            var wentOffline = _presence.Disconnect(account.Id);
+            var wentOffline = _presence.Disconnect(account.Id, Context.ConnectionId);
             if (wentOffline)
             {
                 account.IsOnline = false;
@@ -178,6 +186,10 @@ public class ChatHub : Hub
         var accountId = CurrentAccountId;
         var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Id == accountId, Context.ConnectionAborted)
             ?? throw new ChatException(ChatError.Forbidden, "登录状态无效");
+        if (account.Role == Roles.Agent && !account.IsActive)
+        {
+            throw new ChatException(ChatError.Forbidden, "账号已停用");
+        }
         return account;
     }
 

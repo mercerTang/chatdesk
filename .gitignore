@@ -20,3 +20,7 @@ web/.vite/
 
 # 临时脚本与文件
 .tmp-*
+
+# 桌面包与上传文件
+desktop/dist/
+ChatServer/uploads/

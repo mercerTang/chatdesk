@@ -36,6 +36,21 @@ const store = createChatStore({
       }
       refreshMine()
     },
+    onConversationTransferred: (payload) => {
+      if (current.value?.id === payload.conversationId) {
+        current.value = {
+          ...current.value,
+          agentId: payload.agentId,
+          agentName: payload.agentName
+        }
+        ElMessage.info(`客服已变更为 ${payload.agentName}，会话继续进行`)
+      }
+      mine.value = mine.value.map((conversation) =>
+        conversation.id === payload.conversationId
+          ? { ...conversation, agentId: payload.agentId, agentName: payload.agentName }
+          : conversation
+      )
+    },
     onRestored: () => refreshMine(),
     onError: (error) => ElMessage.warning(error.message)
   }

@@ -49,6 +49,7 @@ builder.Services.AddSwaggerGen();
 builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connectionString));
 
 builder.Services.AddScoped<ChatService>();
+builder.Services.AddScoped<ConversationRealtimeService>();
 builder.Services.AddScoped<RetentionService>();
 builder.Services.AddHostedService<RetentionHostedService>();
 builder.Services.AddSingleton<AgentPresenceService>();

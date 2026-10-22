@@ -1,12 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using ChatServer.Dtos;
+using ChatServer.Services;
 
 namespace ChatServer.Tests;
 
 internal static class TestApi
 {
     public const string AgentPassword = "Agent@123456";
+    public const string AdminPassword = "Admin@123456";
     public const string VisitorPassword = "pass123456";
 
     public static string NewVisitorName() => "visitor_" + Guid.NewGuid().ToString("N")[..10];
@@ -33,6 +35,9 @@ internal static class TestApi
 
     public static async Task<AuthResponse> LoginAgentAsync(HttpClient client, string username = "agent1")
         => await LoginAsync(client, username, AgentPassword);
+
+    public static async Task<AuthResponse> LoginAdminAsync(HttpClient client)
+        => await LoginAsync(client, DatabaseInitializer.AdminUsername, AdminPassword);
 
     public static async Task<ConversationDto> CreateConversationAsync(HttpClient client, int? agentId)
     {

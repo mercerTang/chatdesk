@@ -17,6 +17,9 @@ public class Account
     /// <summary>角色，取值见 <see cref="Roles"/>。</summary>
     public string Role { get; set; } = Roles.Visitor;
 
+    /// <summary>是否启用：停用后不能登录（老库在启动时补列，默认启用）。</summary>
+    public bool IsActive { get; set; } = true;
+
     /// <summary>在线标记：客服由 SignalR 连接状态维护，访客保留字段。</summary>
     public bool IsOnline { get; set; }
 

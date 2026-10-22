@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Linq.Expressions;
 using ChatServer.Data;
 using ChatServer.Dtos;
 using ChatServer.Models;
@@ -22,19 +21,6 @@ public class ChatService
     private static readonly ConcurrentDictionary<int, SeqGate> SeqGates = new();
     private static readonly object SeqGateSync = new();
     private static readonly SemaphoreSlim CreateGate = new(1, 1);
-
-    private static readonly Expression<Func<Message, MessageDto>> MessageProjection = m => new MessageDto(
-        m.Id,
-        m.ConversationId,
-        m.Seq,
-        m.SenderId,
-        m.Sender != null ? m.Sender.DisplayName : string.Empty,
-        m.SenderRole,
-        m.Content,
-        m.ClientMessageId,
-        m.SentAt,
-        m.DeliveredAt,
-        m.ReadAt);
 
     private readonly AppDbContext _db;
     private readonly IConfiguration _configuration;
@@ -96,6 +82,11 @@ public class ChatService
             {
                 var agent = await _db.Accounts.FirstOrDefaultAsync(a => a.Id == requestedAgentId && a.Role == Roles.Agent, ct)
                     ?? throw new ChatException(ChatError.NotFound, "客服不存在");
+                if (!agent.IsActive)
+                {
+                    // 停用与不存在同口径：不向访客泄露账号状态
+                    throw new ChatException(ChatError.NotFound, "客服不存在");
+                }
 
                 // 访客同一时间只能有一个进行中的会话：换客服需先结束当前会话
                 var visitorActive = await _db.Conversations.AsNoTracking()
@@ -135,7 +126,7 @@ public class ChatService
 
             var loads = await ActiveCountsAsync(ct);
             var chosen = agents
-                .Where(a => a.IsOnline && LoadOf(loads, a.Id) < a.MaxConcurrentConversations)
+                .Where(a => a.IsOnline && a.IsActive && LoadOf(loads, a.Id) < a.MaxConcurrentConversations)
                 .OrderBy(a => LoadOf(loads, a.Id))
                 .ThenBy(a => a.Id)
                 .FirstOrDefault()
@@ -201,6 +192,108 @@ public class ChatService
         return await GetConversationAsync(conversationId, accountId, role, ct);
     }
 
+    /// <summary>
+    /// 转派工单：把进行中工单的会话改归目标客服，并写一条转派台账。
+    /// 与创建会话共用全局闸门，避免并发转派击穿目标客服的并发上限。
+    /// </summary>
+    public Task<TransferTicketResult> TransferTicketAsync(
+        int ticketId,
+        int fromAgentId,
+        int targetAgentId,
+        string? note,
+        CancellationToken ct = default)
+        => TransferTicketCoreAsync(ticketId, fromAgentId, null, targetAgentId, note, ct);
+
+    /// <summary>
+    /// 管理员强制转派：状态与容量规则与客服转派一致，只跳过「必须是当前服务客服」，
+    /// 并把操作的管理员记入台账 OperatorId（客服自助转派始终 via 上面的方法，不开放这一路径）。
+    /// </summary>
+    public Task<TransferTicketResult> AdminTransferTicketAsync(
+        int ticketId,
+        int operatorId,
+        int targetAgentId,
+        string? note,
+        CancellationToken ct = default)
+        => TransferTicketCoreAsync(ticketId, null, operatorId, targetAgentId, note, ct);
+
+    private async Task<TransferTicketResult> TransferTicketCoreAsync(
+        int ticketId,
+        int? requiredFromAgentId,
+        int? operatorId,
+        int targetAgentId,
+        string? note,
+        CancellationToken ct)
+    {
+        await CreateGate.WaitAsync(ct);
+        try
+        {
+            var ticket = await _db.Tickets
+                .Include(t => t.Conversation)
+                .FirstOrDefaultAsync(t => t.Id == ticketId, ct);
+            if (ticket?.Conversation is null
+                || (requiredFromAgentId is int required && ticket.Conversation.AgentId != required))
+            {
+                // 与工单列表口径一致：不是当前服务客服就按不存在处理，不泄露工单存在性
+                throw new ChatException(ChatError.NotFound, "工单不存在");
+            }
+
+            if (ticket.Status != TicketStatus.Open)
+            {
+                throw new ChatException(ChatError.Conflict, "工单已结束，无法转派");
+            }
+
+            var fromAgentId = ticket.Conversation.AgentId;
+            if (targetAgentId == fromAgentId)
+            {
+                throw new ChatException(
+                    ChatError.BadRequest,
+                    requiredFromAgentId is null ? "目标客服已是该工单的负责人" : "不能转派给自己");
+            }
+
+            var target = await _db.Accounts
+                .FirstOrDefaultAsync(a => a.Id == targetAgentId && a.Role == Roles.Agent && a.IsActive, ct)
+                ?? throw new ChatException(ChatError.NotFound, "客服不存在");
+
+            EnsureCapacity(target, await CountActiveAsync(target.Id, ct));
+
+            var trimmedNote = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+            if (trimmedNote is { Length: > 200 })
+            {
+                throw new ChatException(ChatError.BadRequest, "转派备注不能超过 200 个字符");
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var conversation = ticket.Conversation;
+            conversation.AgentId = target.Id;
+            conversation.LastActivityAt = now;
+
+            _db.TicketTransfers.Add(new TicketTransfer
+            {
+                TicketId = ticket.Id,
+                FromAgentId = fromAgentId,
+                ToAgentId = target.Id,
+                Note = trimmedNote,
+                OperatorId = operatorId,
+                CreatedAt = now
+            });
+
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "工单 {TicketNo} 由客服 {FromAgentId} 转派给客服 {ToAgentId}{Operator}",
+                ticket.TicketNo, fromAgentId, target.Id,
+                operatorId is null ? "（客服自助）" : $"，操作管理员 {operatorId}");
+
+            var ticketDto = await LoadTicketDtoAsync(ticket.Id, ct);
+            var conversationDto = await LoadDtoAsync(conversation.Id, target.Id, ct);
+            return new TransferTicketResult(ticketDto, conversationDto, fromAgentId, now);
+        }
+        finally
+        {
+            CreateGate.Release();
+        }
+    }
+
     // ---------------------------------------------------------------- 消息
 
     public async Task<IReadOnlyList<MessageDto>> GetMessagesAsync(
@@ -221,7 +314,7 @@ public class ChatService
             .Where(m => m.ConversationId == conversationId && m.Seq > afterSeq && m.SentAt >= cutoff)
             .OrderBy(m => m.Seq)
             .Take(take)
-            .Select(MessageProjection)
+            .Select(MessageProjections.Projection)
             .ToListAsync(ct);
     }
 
@@ -546,6 +639,18 @@ public class ChatService
         => await ProjectConversations(_db.Conversations.AsNoTracking().Where(c => c.Id == conversationId), viewerId)
             .FirstAsync(ct);
 
+    private async Task<TicketDto> LoadTicketDtoAsync(int ticketId, CancellationToken ct)
+    {
+        var cutoff = RetentionService.Cutoff(
+            DateTimeOffset.UtcNow,
+            _configuration.GetValue("Retention:Days", RetentionService.DefaultRetentionDays));
+        return await _db.Tickets.AsNoTracking()
+            .Where(ticket => ticket.Id == ticketId)
+            .Select(TicketProjections.Build(cutoff))
+            .FirstAsync(ct);
+    }
+
+
     private static IQueryable<ConversationDto> ProjectConversations(IQueryable<Conversation> query, int viewerId)
         => query.Select(c => new ConversationDto(
             c.Id,
@@ -561,3 +666,10 @@ public class ChatService
             c.CreatedAt,
             c.LastActivityAt));
 }
+
+/// <summary>转派结果：更新后的工单、目标客服视角的会话，以及组迁移所需信息。</summary>
+public record TransferTicketResult(
+    Dtos.TicketDto Ticket,
+    Dtos.ConversationDto Conversation,
+    int FromAgentId,
+    DateTimeOffset TransferredAt);
