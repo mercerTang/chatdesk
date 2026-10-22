@@ -6,7 +6,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 WEB="$ROOT/web"
-DOTNET_BIN="${DOTNET_BIN:-~/Desktop/开发/dotnet-sdk/dotnet}"
+DOTNET_BIN="${DOTNET_BIN:-${HOME}/Desktop/开发/dotnet-sdk/dotnet}"
 BACKEND_PORT="${BACKEND_PORT:-5180}"
 VISITOR_PORT="${VISITOR_PORT:-5173}"
 AGENT_PORT="${AGENT_PORT:-5174}"

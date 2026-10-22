@@ -24,3 +24,6 @@ web/.vite/
 # 桌面包与上传文件
 desktop/dist/
 ChatServer/uploads/
+
+# 本地验收截图（不入库）
+tests/screenshots/

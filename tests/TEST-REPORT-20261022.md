@@ -27,7 +27,7 @@
 ```bash
 cd ~/Desktop/开发/chatdesk-copy
 ~/Desktop/开发/dotnet-sdk/dotnet build     # 0 warning / 0 error
-~/Desktop/开发/dotnet-sdk/dotnet test      # 通过: 52，失败: 0，总计: 52
+~/Desktop/开发/dotnet-sdk/dotnet test      # 通过: 57，失败: 0，总计: 57
 cd web && npm run build                                # ✓ built in 2.08s
 cd desktop && CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist   # 产出 dist/mac-arm64/ChatDesk 客服.app
 ```
@@ -57,6 +57,8 @@ cd desktop && CSC_IDENTITY_AUTO_DISCOVERY=false npm run dist   # 产出 dist/mac
 完整名单：`test-cases-20261022.txt`。
 
 ## 五、界面验证与截图
+
+> 截图仅保存在本地 `tests/screenshots/`，已加入 `.gitignore`，不入库；下表列出本地文件名与验证点。
 
 | 截图 | 内容 | 验证点 |
 |---|---|---|
