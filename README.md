@@ -1,14 +1,29 @@
-# 在线客服对话系统
+# 在线客服对话系统（ChatDesk）
 
-访客登录后找到客服、客服 1 对多接待的实时对话系统。前后端分离：
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![.NET](https://img.shields.io/badge/.NET-8.0-512BD4)
+![Vue](https://img.shields.io/badge/Vue-3-42b883)
+![tests](https://img.shields.io/badge/tests-57%20passing-brightgreen)
+
+访客登录后找到客服、客服 1 对多接待的实时对话系统。前后端分离，含客服桌面客户端与管理后台。
 
 - 后端 `ChatServer/`：ASP.NET Core 8 Web API + SignalR + EF Core（SQLite），端口 5180
-- 前端 `web/`：Vue 3 + Vite + Element Plus + vue-router + axios + SignalR 客户端，开发端口 5173
+- 前端 `web/`：Vue 3 + Vite + Element Plus + vue-router + axios + SignalR 客户端，开发端口 5173 / 5174
+- 桌面端 `desktop/`：Electron 客服客户端，带托盘与系统通知
+
+## 功能
+
+- **实时对话**：SignalR 广播、服务端权威序号、幂等重发、断线补拉、已发送 / 已送达 / 已读三段回执
+- **工单**：一会话一工单、30 天消息保留、TXT / CSV 导出、按客服隔离、客服转派与管理员强制转派
+- **管理中台**：`admin` 角色、客服账号增改停用、跨客服会话与工单、强制转派（台账含操作人）
+- **数据统计**：概览指标、近 N 天按日趋势、按客服维度（会话数 / 本人消息数 / 平均首响 / 当前负载）
+- **富文本与上传**：Quill 2 所见即所得编辑器，图片 / 附件 ≤10 MB，图片内联、附件按原文件名下载
+- **桌面客户端**：Electron 打包、托盘、系统通知、后端地址可配
 
 ## 目录结构
 
 ```
-chatdesk-copy/
+chatdesk/
 ├── ChatServer.sln
 ├── ChatServer/                 # 后端（仅 API 与 Hub，不再托管页面）
 │   ├── Program.cs              # 启动：Serilog / EF / JWT / SignalR / 全局异常 / 建库种子
@@ -35,21 +50,24 @@ chatdesk-copy/
 需要 .NET 8 SDK 与 Node.js 18+（本机 SDK 位于 `~/Desktop/开发/dotnet-sdk`，不在 PATH 时用绝对路径或先 `export PATH`）。
 
 ```bash
+git clone https://github.com/mercerTang/chatdesk.git
+cd chatdesk
+
 # 1) 后端（终端 A）
-cd ~/Desktop/开发/chatdesk-copy
 dotnet build                                  # 0 error
 dotnet test                                   # 57 个用例全绿
 dotnet run --project ChatServer --urls http://localhost:5180
 
 # 2) 前端（终端 B）
-cd ~/Desktop/开发/chatdesk-copy/web
+cd web
 npm install
 npm run dev                                   # http://localhost:5173
+```
 
 ### 一键启动（macOS）
 
 ```bash
-cd ~/Desktop/开发/chatdesk-copy
+cd chatdesk
 ./start.command          # 启动后端 5180 + 访客前端 5173 + 客服前端 5174，并自动打开两个登录页
 ./start.command stop     # 停止由它启动的进程（前台运行时也可直接 Ctrl+C）
 ```
@@ -214,6 +232,17 @@ cd web && npm run build
 - 数据保留：超过 30 天的消息被清理，工单与会话保留
 - 极端网络：客服离线期间的消息落库并在恢复后补拉、客服断线重连后按水位补齐
 
-## 边界（本轮不做）
+## 边界（暂不支持）
 
-多实例集群 / Redis 背板、密码找回与刷新令牌、邮箱验证、多设备会话管理、消息撤回编辑、图片与文件消息、排队、账号管理后台。
+多实例集群 / Redis 背板、密码找回与刷新令牌、邮箱验证、多设备会话管理、消息撤回与编辑、排队分配、对象存储与签名 URL、桌面端自动更新。
+
+## 开源与参与
+
+- 许可证：[MIT](LICENSE)
+- 贡献指南：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 行为准则：[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- 安全策略与部署前必须修改的默认值：[SECURITY.md](SECURITY.md)
+- 更新日志：[CHANGELOG.md](CHANGELOG.md)
+- 需求与设计文档：[`docs/README.md`](docs/README.md)
+
+欢迎提 Issue 与 PR。反馈 bug 时请附环境、复现步骤与日志；提 PR 前请先跑一遍 `dotnet test` 与 `npm run build`。
