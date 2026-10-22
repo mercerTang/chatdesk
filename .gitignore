@@ -1,0 +1,13 @@
+# 本机运行数据
+*.db
+*.db-wal
+*.db-shm
+*.log
+logs/
+
+# 前端构建与缓存
+web/dist/
+web/.vite/
+
+# 临时脚本与文件
+.tmp-*

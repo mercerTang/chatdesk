@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/jpeg" href="/logo.jpg" />
+    <script>
+      try {
+        if (localStorage.getItem('chat.theme') === 'light') {
+          document.documentElement.classList.remove('dark')
+        }
+      } catch {
+        /* 忽略隐私模式限制 */
+      }
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>在线客服对话</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
