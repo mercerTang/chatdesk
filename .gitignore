@@ -5,9 +5,18 @@
 *.log
 logs/
 
-# 前端构建与缓存
+# 构建产物与依赖
+bin/
+obj/
+node_modules/
 web/dist/
 web/.vite/
+
+# 系统与编辑器
+.DS_Store
+.vscode/
+.idea/
+*.user
 
 # 临时脚本与文件
 .tmp-*
