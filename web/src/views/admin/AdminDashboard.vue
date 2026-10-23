@@ -13,6 +13,10 @@ const dayOptions = [
 const days = ref(14)
 const loading = ref(false)
 const stats = ref(null)
+/** 图表形态：柱状 / 折线。 */
+const chartType = ref('bar')
+/** 当前悬停的日期下标：三组序列联动高亮。 */
+const hoverIndex = ref(-1)
 
 const overview = computed(() => stats.value?.overview ?? null)
 const agentRows = computed(() => stats.value?.agents ?? [])
@@ -87,18 +91,26 @@ const trendSeries = computed(() => {
   const step = Math.max(1, Math.ceil(rows.length / 7))
   const build = (key, label) => {
     const max = rows.reduce((peak, row) => Math.max(peak, row[key]), 0)
+    const points = rows.map((row, index) => {
+      const x = rows.length <= 1 ? 0 : (index / (rows.length - 1)) * 100
+      const y = max === 0 ? 100 : 100 - (row[key] / max) * 100
+      return `${x.toFixed(2)},${y.toFixed(2)}`
+    })
     return {
       key,
       label,
       max,
       total: rows.reduce((sum, row) => sum + row[key], 0),
       ticks: [max, Math.round(max / 2), 0],
+      linePoints: points.join(' '),
+      areaPoints: points.length ? `0,100 ${points.join(' ')} 100,100` : '',
       bars: rows.map((row, index) => {
         const value = row[key]
         const showLabel = index % step === 0 || index === rows.length - 1
         return {
           date: row.date,
           value,
+          index,
           height: max === 0 || value === 0 ? '0%' : `${Math.max(4, Math.round((value / max) * 100))}%`,
           label: showLabel ? shortDate(row.date) : '',
           tip: `${shortDate(row.date)} · ${label} ${value}`
@@ -159,6 +171,10 @@ onMounted(loadStats)
           <h3 class="admin-drawer-title">近 {{ days }} 天趋势</h3>
           <p class="admin-drawer-sub">按服务端本地日期切分，没有数据的日子也留一行</p>
         </div>
+        <el-radio-group v-model="chartType" size="small">
+          <el-radio-button label="bar">柱状</el-radio-button>
+          <el-radio-button label="line">折线</el-radio-button>
+        </el-radio-group>
       </div>
 
       <div v-for="series in trendSeries" :key="series.key" class="trend-row">
@@ -172,10 +188,31 @@ onMounted(loadStats)
           </div>
           <div class="trend-plot">
             <span v-for="n in 3" :key="n" class="trend-grid-line" :style="{ top: `${(n - 1) * 50}%` }"></span>
-            <div class="trend-bars">
-              <div v-for="bar in series.bars" :key="bar.date" class="trend-slot">
-                <div class="trend-bar" :style="{ height: bar.height }"></div>
-                <span class="trend-tip">{{ bar.tip }}</span>
+            <svg
+              v-if="chartType === 'line'"
+              class="trend-line"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <polygon :points="series.areaPoints" class="trend-area" />
+              <polyline
+                :points="series.linePoints"
+                class="trend-polyline"
+                vector-effect="non-scaling-stroke"
+              />
+            </svg>
+            <div class="trend-bars" :class="{ 'is-line': chartType === 'line' }">
+              <div
+                v-for="bar in series.bars"
+                :key="bar.date"
+                class="trend-slot"
+                :class="{ 'is-hover': hoverIndex === bar.index }"
+                @mouseenter="hoverIndex = bar.index"
+                @mouseleave="hoverIndex = -1"
+              >
+                <div v-if="chartType === 'bar'" class="trend-bar" :style="{ height: bar.height }"></div>
+                <span v-show="hoverIndex === bar.index" class="trend-tip">{{ bar.tip }}</span>
               </div>
             </div>
           </div>
@@ -311,6 +348,36 @@ onMounted(loadStats)
   filter: brightness(1.12);
 }
 
+/* 三组序列联动：悬停某一天时，三行同一天的柱/点一起高亮 */
+.trend-slot.is-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(37, 99, 235, 0.07);
+  border-radius: 3px;
+}
+
+.trend-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.trend-polyline {
+  fill: none;
+  stroke: rgba(37, 99, 235, 0.9);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.trend-area {
+  fill: rgba(37, 99, 235, 0.12);
+}
+
 .trend-tip {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -329,7 +396,8 @@ onMounted(loadStats)
   z-index: 5;
 }
 
-.trend-slot:hover .trend-tip {
+.trend-slot:hover .trend-tip,
+.trend-slot.is-hover .trend-tip {
   opacity: 1;
 }
 
