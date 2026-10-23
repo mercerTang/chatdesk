@@ -84,23 +84,24 @@ const overviewCards = computed(() => {
 /** 三条趋势各自按自身峰值取高：消息量级远大于工单，共用一根坐标会把小值压平。 */
 const trendSeries = computed(() => {
   const rows = stats.value?.daily ?? []
+  const step = Math.max(1, Math.ceil(rows.length / 7))
   const build = (key, label) => {
     const max = rows.reduce((peak, row) => Math.max(peak, row[key]), 0)
     return {
       key,
       label,
+      max,
       total: rows.reduce((sum, row) => sum + row[key], 0),
+      ticks: [max, Math.round(max / 2), 0],
       bars: rows.map((row, index) => {
         const value = row[key]
-        const isLabeled =
-          index === 0 ||
-          index === rows.length - 1 ||
-          index === Math.floor((rows.length - 1) / 2)
+        const showLabel = index % step === 0 || index === rows.length - 1
         return {
           date: row.date,
-          height: max === 0 || value === 0 ? '0%' : `${Math.max(6, Math.round((value / max) * 100))}%`,
-          label: isLabeled ? shortDate(row.date) : '',
-          tip: `${row.date} · ${label} ${value}`
+          value,
+          height: max === 0 || value === 0 ? '0%' : `${Math.max(4, Math.round((value / max) * 100))}%`,
+          label: showLabel ? shortDate(row.date) : '',
+          tip: `${shortDate(row.date)} · ${label} ${value}`
         }
       })
     }
@@ -163,15 +164,27 @@ onMounted(loadStats)
       <div v-for="series in trendSeries" :key="series.key" class="trend-row">
         <div class="trend-row-head">
           <span class="trend-label">{{ series.label }}</span>
-          <span class="trend-total">合计 {{ series.total }}</span>
+          <span class="trend-total">合计 {{ series.total }} · 峰值 {{ series.max }}</span>
         </div>
-        <div class="trend-bars">
-          <div v-for="bar in series.bars" :key="bar.date" class="trend-slot" :title="bar.tip">
-            <div class="trend-bar" :style="{ height: bar.height }"></div>
+        <div class="trend-chart">
+          <div class="trend-scale">
+            <span v-for="tick in series.ticks" :key="tick">{{ tick }}</span>
+          </div>
+          <div class="trend-plot">
+            <span v-for="n in 3" :key="n" class="trend-grid-line" :style="{ top: `${(n - 1) * 50}%` }"></span>
+            <div class="trend-bars">
+              <div v-for="bar in series.bars" :key="bar.date" class="trend-slot">
+                <div class="trend-bar" :style="{ height: bar.height }"></div>
+                <span class="trend-tip">{{ bar.tip }}</span>
+              </div>
+            </div>
           </div>
         </div>
         <div class="trend-dates">
-          <span v-for="bar in series.bars" :key="bar.date" class="trend-date">{{ bar.label }}</span>
+          <span class="trend-scale-spacer"></span>
+          <div class="trend-date-row">
+            <span v-for="bar in series.bars" :key="bar.date" class="trend-date">{{ bar.label }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -239,11 +252,46 @@ onMounted(loadStats)
   display: flex;
   align-items: flex-end;
   gap: 3px;
-  height: 56px;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.trend-chart {
+  display: flex;
+  gap: 8px;
+}
+
+.trend-scale {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 26px;
+  height: 84px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--text-quiet);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.trend-plot {
+  position: relative;
+  flex: 1;
+  height: 84px;
   border-bottom: 1px solid var(--hairline);
 }
 
+.trend-grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(100, 116, 139, 0.18);
+  pointer-events: none;
+}
+
 .trend-slot {
+  position: relative;
   flex: 1 1 0;
   min-width: 4px;
   height: 100%;
@@ -253,19 +301,53 @@ onMounted(loadStats)
 
 .trend-bar {
   width: 100%;
-  border-radius: 2px 2px 0 0;
-  background: var(--brand);
-  opacity: 0.85;
+  min-height: 0;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, rgba(37, 99, 235, 0.95), rgba(37, 99, 235, 0.55));
+  transition: height 0.25s ease, filter 0.15s ease;
 }
 
 .trend-slot:hover .trend-bar {
+  filter: brightness(1.12);
+}
+
+.trend-tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 5;
+}
+
+.trend-slot:hover .trend-tip {
   opacity: 1;
 }
 
 .trend-dates {
   display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.trend-scale-spacer {
+  width: 26px;
+  flex: none;
+}
+
+.trend-date-row {
+  flex: 1;
+  display: flex;
   gap: 3px;
-  margin-top: 5px;
 }
 
 .trend-date {
